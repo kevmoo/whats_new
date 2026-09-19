@@ -1,0 +1,39 @@
+# Default configuration for `whats_new` (Dart ecosystem focus)
+pub_publishers:
+  - dart.dev
+  - tools.dart.dev
+  - labs.dart.dev
+
+sdk:
+  repo: dart-lang/sdk
+  language_repo: dart-lang/language
+  track_main_changelog: true
+  track_stable_branches:
+    - stable
+    - beta
+
+github:
+  orgs:
+    - dart-lang
+  repos:
+    - googleapis/google-cloud-dart
+    - google/googleapis.dart
+  exclude_repos:
+    - dart-lang/sdk
+  exclude_authors:
+    - dependabot
+    - dependabot[bot]
+    - github-actions
+    - github-actions[bot]
+    - dart-ert
+    - auto-submit
+    - google-copybara
+    - flutter-pub-roller-bot
+    - skia-flutter-autoroll
+    - engine-flutter-autoroll
+  exclude_pr_title_patterns:
+    - '^Bump '
+    - '^Publish '
+    - '^Prepare to publish'
+    - '^chore\(deps\):'
+    - '^Revert "'

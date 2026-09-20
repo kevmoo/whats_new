@@ -96,6 +96,10 @@ class SdkCommitRef {
   final String authorLogin;
   final String url;
   final List<int> issueNumbers;
+  final List<String> addedBullets;
+  final int nonChangelogFileCount;
+  final List<String> subsystems;
+  final bool isChangelogCleanup;
 
   const SdkCommitRef({
     required this.sha,
@@ -103,6 +107,10 @@ class SdkCommitRef {
     required this.authorLogin,
     required this.url,
     this.issueNumbers = const [],
+    this.addedBullets = const [],
+    this.nonChangelogFileCount = 0,
+    this.subsystems = const [],
+    this.isChangelogCleanup = false,
   });
 
   Map<String, Object?> toJson() => {
@@ -111,6 +119,10 @@ class SdkCommitRef {
     'authorLogin': authorLogin,
     'url': url,
     'issueNumbers': issueNumbers,
+    if (addedBullets.isNotEmpty) 'addedBullets': addedBullets,
+    'nonChangelogFileCount': nonChangelogFileCount,
+    if (subsystems.isNotEmpty) 'subsystems': subsystems,
+    'isChangelogCleanup': isChangelogCleanup,
   };
 }
 

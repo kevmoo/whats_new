@@ -65,6 +65,61 @@ void main() {
       expect(sections[1].heading, '`dart:js_interop`');
       expect(sections[1].bullets, ['Added `JSArray.fromAsync`.']);
     });
+
+    test(
+      'resolveEnclosingChangelogHeading & isCommitChangelogCleanup work back',
+      () {
+        final fullChangelog = [
+          '## 3.14.0',
+          '### Core libraries',
+          '#### `dart:typed_data`',
+          '',
+          '- Existing bullet 1.',
+          '- Existing bullet 2.',
+          '- Existing bullet 3.',
+          '- Existing bullet 4.',
+          '- Added `Int32x4.min` and `Int32x4.max`.',
+        ];
+        const patchWithDistantHeader = '''
+@@ -7,2 +7,3 @@
+ - Existing bullet 4.
++- Added `Int32x4.min` and `Int32x4.max`.
+''';
+        final parsed = parseSdkChangelogPatch(
+          patchWithDistantHeader,
+          fullChangelogLines: fullChangelog,
+        );
+        expect(parsed, hasLength(1));
+        expect(parsed.first.heading, '`dart:typed_data`');
+
+        expect(
+          isCommitChangelogCleanup(
+            patch: '- - Old typo text.\n+ - Fixed typo text.',
+            addedBulletCount: 1,
+            nonChangelogFileCount: 0,
+            commitTitle: 'Fix typo in CHANGELOG.md',
+          ),
+          isTrue,
+        );
+        expect(
+          isCommitChangelogCleanup(
+            patch: patchWithDistantHeader,
+            addedBulletCount: 1,
+            nonChangelogFileCount: 4,
+            commitTitle: '[typed_data] Add Int32x4.min and Int32x4.max',
+          ),
+          isFalse,
+        );
+        expect(
+          extractSdkSubsystems([
+            'CHANGELOG.md',
+            'sdk/lib/_internal/vm/lib/simd_patch.dart',
+            'tests/lib/typed_data/int32x4_test.dart',
+          ]),
+          ['sdk/lib', 'tests/lib'],
+        );
+      },
+    );
   });
 
   group('PR Notability Scorer & Metadata Extraction', () {

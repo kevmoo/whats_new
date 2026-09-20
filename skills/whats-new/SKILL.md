@@ -27,24 +27,36 @@ posts (X, Bluesky, LinkedIn), and YouTube video scripts/show notes.
 
 2. **Apply the Selection Rubric
    ([references/rubric.md](references/rubric.md))**: Read
-   `/tmp/whats_new_digest.md` and propose a **curated shortlist of 5–10
-   highlights** across four buckets:
+   `/tmp/whats_new_digest.md` and propose a **curated shortlist of 8–16
+   highlights** across four streams:
    - **🆕 New & Updated Packages (`pub.dev`)**: Brand-new packages (`0.1.0` /
      `1.0.0`) and significant feature releases across `dart.dev`,
      `tools.dart.dev`, and `labs.dart.dev`.
    - **🎯 Dart SDK Next Stable (`main` `CHANGELOG.md`)**: User-facing additions
      to the language, core libraries (`dart:js_interop`, `dart:ffi`,
-     `dart:typed_data`), and CLI/analyzer tooling.
+     `dart:typed_data`), and CLI/analyzer tooling. Use the per-commit work-back
+     metadata (`🛠️ N code/test files` vs. `🧹 CHANGELOG.md-only edit/cleanup`)
+     to exclude copy-edits or typo fixes from feature highlights.
    - **🛡️ Dart SDK Stable "Dot" Releases (`stable` / `beta`)**: Patch releases
      and critical `[cp]` cherry-pick bug fixes.
    - **🚀 Notable Merged PRs & 🎉 First-Time Contributors**: High-scoring human
      PRs (`score` ranked by reactions, media demos, `P0`–`P2` labels, and diff
      size) and first-time community contributors.
 
-3. **Human Editorial Gate (`ask_question`)**: Present the proposed 5–10
-   highlights (with clickable links and 1-line summaries) and use `ask_question`
-   (`is_multi_select: true` or confirmation) so the human can approve, trim, or
-   swap items before drafting copy.
+3. **Standalone Repository-Grouped Atomic Table Artifact & Human Gate
+   (`ask_question`)**:
+   - Write a **standalone artifact** (`whats_new_recommended_table.md`)
+     containing **ONLY** the recommended highlights grouped by **GitHub
+     Repository** (`### [org/repo](https://github.com/org/repo)`).
+   - Under each repository heading, render a 5-column Markdown table
+     (`| Type | Target | Version / Ref | Summary | Author |`).
+   - **Strict 1-Item-Per-Row Invariant**: Every table row MUST represent
+     **strictly one atomic item** (one package release, one SDK commit, or one
+     PR/spec change). **NEVER** merge multiple packages or combine different
+     commits/PRs into a single compound row.
+   - Present the standalone table and use `ask_question`
+     (`is_multi_select: true` or confirmation) so the human can approve, trim,
+     or swap rows before drafting Stage 2 copy.
 
 ---
 

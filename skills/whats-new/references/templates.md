@@ -1,5 +1,26 @@
 # Deliverable Templates (`whats-new`)
 
+## 0. Stage 1: Standalone Repository-Grouped Recommended Table (`whats_new_recommended_table.md`)
+
+```markdown
+# Recommended Highlights by Repository (`YYYY-MM-DD` to `YYYY-MM-DD`)
+
+### [dart-lang/sdk](https://github.com/dart-lang/sdk)
+
+| Type | Target | Version / Ref | Summary | Author |
+| :--- | :--- | :--- | :--- | :--- |
+| 🛡️ SDK (`stable`) | Dart `3.x.y` | [`sha`](https://github.com/dart-lang/sdk/commit/sha) | Publishes Dart `3.x.y` patch release on the `stable` channel. | `dart-lang/sdk` |
+| 🎯 SDK (`main`) | `dart:typed_data` | [`sha`](https://github.com/dart-lang/sdk/commit/sha) | Concrete 1-line summary (`🛠️ N code/test files`). | [`@author`](https://github.com/author) |
+
+### [dart-lang/native](https://github.com/dart-lang/native)
+
+| Type | Target | Version / Ref | Summary | Author |
+| :--- | :--- | :--- | :--- | :--- |
+| 📦 Updated Package | [`package:foo`](https://pub.dev/packages/foo/versions/1.2.0) | `1.2.0` | Concrete 1-line summary of the release. | [Full Name (`@login`)](https://github.com/login) |
+```
+
+---
+
 ## 1. Weekly "Notable Changes" Markdown Report (`#181433` Style)
 
 ```markdown

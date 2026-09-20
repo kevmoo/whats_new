@@ -39,12 +39,15 @@ String? extractChangelogVersionSection(String changelog, String targetVersion) {
 String? _matchVersionHeader(String line) =>
     _versionHeaderPattern.firstMatch(line)?.group(1)?.trim();
 
+final _hunkHeaderPattern = RegExp(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@');
+
 /// Parses a unified git patch for `dart-lang/sdk` `CHANGELOG.md` into sections.
 List<SdkChangelogSection> parseSdkChangelogPatch(
   String patch, {
   List<SdkCommitRef> touchingCommits = const [],
+  List<String> fullChangelogLines = const [],
 }) {
-  final state = _PatchParserState();
+  final state = _PatchParserState(fullChangelogLines: fullChangelogLines);
   for (final rawLine in patch.split('\n')) {
     state.processLine(rawLine);
   }
@@ -61,10 +64,73 @@ List<SdkChangelogSection> parseSdkChangelogPatch(
       .toList(growable: false);
 }
 
+/// Counts how many markdown bullets (`- ` or `* `) were removed in [patch].
+int countRemovedChangelogBullets(String patch) {
+  var count = 0;
+  for (final line in patch.split('\n')) {
+    if (!line.startsWith('-') || line.startsWith('---')) continue;
+    final trimmed = line.substring(1).trimLeft();
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/// Classifies whether a `CHANGELOG.md` commit is a copy-edit/cleanup rather
+/// than a net-new SDK feature or bugfix.
+bool isCommitChangelogCleanup({
+  required String patch,
+  required int addedBulletCount,
+  required int nonChangelogFileCount,
+  required String commitTitle,
+}) {
+  if (nonChangelogFileCount > 0) return false;
+  if (addedBulletCount == 0) return true;
+  final removedBulletCount = countRemovedChangelogBullets(patch);
+  if (removedBulletCount >= addedBulletCount) return true;
+  final lowerTitle = commitTitle.toLowerCase();
+  return lowerTitle.contains('typo') ||
+      lowerTitle.contains('format') ||
+      lowerTitle.contains('spelling');
+}
+
+/// Extracts up to 3 concise SDK subsystem paths from modified file paths.
+List<String> extractSdkSubsystems(Iterable<String> filenames) {
+  final subsystems = <String>{};
+  for (final file in filenames) {
+    if (file == 'CHANGELOG.md') continue;
+    final parts = file.split('/');
+    if (parts.length >= 2) {
+      subsystems.add('${parts[0]}/${parts[1]}');
+    } else if (parts.isNotEmpty) {
+      subsystems.add(parts.first);
+    }
+    if (subsystems.length >= 3) break;
+  }
+  return subsystems.toList(growable: false);
+}
+
+final _githubRepoSlugPattern = RegExp(
+  r'github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)',
+);
+
+/// Extracts `owner/repo` from a GitHub URL, stripping `.git` suffixes.
+String? extractGitHubRepoSlug(String? url) {
+  if (url == null || url.isEmpty) return null;
+  final match = _githubRepoSlugPattern.firstMatch(url);
+  if (match == null) return null;
+  final slug = match.group(1)!;
+  return slug.endsWith('.git') ? slug.substring(0, slug.length - 4) : slug;
+}
+
 class _PatchParserState {
+  final List<String> fullChangelogLines;
   final sectionMap = <String, List<String>>{};
   String currentHeading = 'General';
   String? currentBullet;
+
+  _PatchParserState({this.fullChangelogLines = const []});
 
   void flushBullet() {
     final text = currentBullet?.trim();
@@ -75,8 +141,13 @@ class _PatchParserState {
   }
 
   void processLine(String rawLine) {
-    if (rawLine.startsWith('+++') || rawLine.startsWith('@@')) {
+    if (rawLine.startsWith('+++')) {
       flushBullet();
+      return;
+    }
+    if (rawLine.startsWith('@@')) {
+      flushBullet();
+      _resolveHeadingFromHunkLine(rawLine);
       return;
     }
     if (rawLine.startsWith(' ')) {
@@ -88,6 +159,18 @@ class _PatchParserState {
     final added = rawLine.substring(1).trimRight();
     if (_updateHeadingIfMatched(added)) return;
     _appendAddedLine(added);
+  }
+
+  void _resolveHeadingFromHunkLine(String rawLine) {
+    if (fullChangelogLines.isEmpty) return;
+    final match = _hunkHeaderPattern.firstMatch(rawLine);
+    final startLine = int.tryParse(match?.group(1) ?? '');
+    if (startLine == null) return;
+    final resolved = resolveEnclosingChangelogHeading(
+      fullChangelogLines,
+      startLine,
+    );
+    if (resolved != null) currentHeading = resolved;
   }
 
   bool _updateHeadingIfMatched(String text) {
@@ -108,6 +191,23 @@ class _PatchParserState {
       currentBullet = '$currentBullet $trimmed';
     }
   }
+}
+
+/// Scans upward from [oneBasedLine] in [changelogLines] to find the enclosing
+/// `###` or `####` section heading.
+String? resolveEnclosingChangelogHeading(
+  List<String> changelogLines,
+  int oneBasedLine,
+) {
+  if (changelogLines.isEmpty) return null;
+  final startIdx = (oneBasedLine - 1).clamp(0, changelogLines.length - 1);
+  for (var i = startIdx; i >= 0; i--) {
+    final line = changelogLines[i];
+    if (_versionHeaderPattern.hasMatch(line)) break;
+    final match = _h3OrH4Pattern.firstMatch(line);
+    if (match != null) return match.group(1)!.trim();
+  }
+  return null;
 }
 
 /// Extracts unique issue numbers (e.g. `#63811`) from a commit/PR message.

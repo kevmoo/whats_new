@@ -57,29 +57,129 @@ class SdkHarvester {
     final rawList = await _github.getJson(commitsUri);
     if (rawList is! List || rawList.isEmpty) return const [];
 
-    final commitMaps = rawList.whereType<Map<String, Object?>>().toList();
-    final touchingCommits = commitMaps.map(_parseCommitRef).toList();
-
-    final newestSha = commitMaps.first['sha'] as String?;
-    final oldestMap = commitMaps.last;
-    final baseSha =
-        _extractParentSha(oldestMap) ?? (oldestMap['sha'] as String?);
-    if (newestSha == null || baseSha == null) return const [];
-
-    final compareUri = Uri.https(
-      'api.github.com',
-      '/repos/$repo/compare/$baseSha...$newestSha',
+    final fullChangelog = await _github.getText(
+      Uri.parse('https://raw.githubusercontent.com/$repo/main/CHANGELOG.md'),
     );
-    final compareJson = await _github.getJson(compareUri);
-    if (compareJson is! Map) return const [];
+    final changelogLines = fullChangelog?.split('\n') ?? const <String>[];
 
-    final patch = _findChangelogPatch(Map<String, Object?>.from(compareJson));
-    if (patch == null) return const [];
+    final commitMaps = rawList.whereType<Map<String, Object?>>().toList();
+    final sectionsByHeading =
+        <String, ({List<String> bullets, List<SdkCommitRef> commits})>{};
 
-    return parseSdkChangelogPatch(patch, touchingCommits: touchingCommits);
+    for (final summaryMap in commitMaps.reversed) {
+      await _inspectChangelogCommit(
+        repo: repo,
+        summaryMap: summaryMap,
+        changelogLines: changelogLines,
+        sectionsByHeading: sectionsByHeading,
+      );
+    }
+
+    return sectionsByHeading.entries
+        .map(
+          (e) => SdkChangelogSection(
+            heading: e.key,
+            bullets: e.value.bullets,
+            touchingCommits: e.value.commits,
+          ),
+        )
+        .toList(growable: false);
   }
 
-  SdkCommitRef _parseCommitRef(Map<String, Object?> map) {
+  Future<void> _inspectChangelogCommit({
+    required String repo,
+    required Map<String, Object?> summaryMap,
+    required List<String> changelogLines,
+    required Map<String, ({List<String> bullets, List<SdkCommitRef> commits})>
+    sectionsByHeading,
+  }) async {
+    final fullSha = (summaryMap['sha'] as String?) ?? '';
+    if (fullSha.isEmpty) return;
+
+    final detailJson = await _github.getJson(
+      Uri.https('api.github.com', '/repos/$repo/commits/$fullSha'),
+    );
+    final detailMap =
+        detailJson is Map ? Map<String, Object?>.from(detailJson) : summaryMap;
+
+    final files =
+        (detailMap['files'] as List?)
+            ?.whereType<Map<String, Object?>>()
+            .toList() ??
+        const <Map<String, Object?>>[];
+    final patch = _findChangelogPatchFromFiles(files);
+    if (patch == null) return;
+
+    final codeFiles =
+        files
+            .map((f) => (f['filename'] as String?) ?? '')
+            .where((name) => name.isNotEmpty && name != 'CHANGELOG.md')
+            .toList();
+
+    final parsedSections = parseSdkChangelogPatch(
+      patch,
+      fullChangelogLines: changelogLines,
+    );
+    final allAddedBullets = parsedSections
+        .expand((s) => s.bullets)
+        .toList(growable: false);
+    final baseRef = _parseBaseCommitRef(detailMap);
+    final isCleanup = isCommitChangelogCleanup(
+      patch: patch,
+      addedBulletCount: allAddedBullets.length,
+      nonChangelogFileCount: codeFiles.length,
+      commitTitle: baseRef.title,
+    );
+
+    if (isCleanup) {
+      final cleanupRef = _buildCommitRef(
+        baseRef: baseRef,
+        addedBullets: allAddedBullets,
+        codeFiles: codeFiles,
+        isChangelogCleanup: true,
+      );
+      final bucket = sectionsByHeading.putIfAbsent(
+        '🧹 CHANGELOG-Only Cleanups / Edits',
+        () => (bullets: <String>[], commits: <SdkCommitRef>[]),
+      );
+      bucket.commits.add(cleanupRef);
+      return;
+    }
+
+    for (final section in parsedSections) {
+      final commitRef = _buildCommitRef(
+        baseRef: baseRef,
+        addedBullets: section.bullets,
+        codeFiles: codeFiles,
+        isChangelogCleanup: false,
+      );
+      final bucket = sectionsByHeading.putIfAbsent(
+        section.heading,
+        () => (bullets: <String>[], commits: <SdkCommitRef>[]),
+      );
+      bucket.bullets.addAll(section.bullets);
+      bucket.commits.add(commitRef);
+    }
+  }
+
+  SdkCommitRef _buildCommitRef({
+    required SdkCommitRef baseRef,
+    required List<String> addedBullets,
+    required List<String> codeFiles,
+    required bool isChangelogCleanup,
+  }) => SdkCommitRef(
+    sha: baseRef.sha,
+    title: baseRef.title,
+    authorLogin: baseRef.authorLogin,
+    url: baseRef.url,
+    issueNumbers: baseRef.issueNumbers,
+    addedBullets: addedBullets,
+    nonChangelogFileCount: codeFiles.length,
+    subsystems: extractSdkSubsystems(codeFiles),
+    isChangelogCleanup: isChangelogCleanup,
+  );
+
+  SdkCommitRef _parseBaseCommitRef(Map<String, Object?> map) {
     final sha = (map['sha'] as String?) ?? '';
     final commitObj =
         (map['commit'] as Map<String, Object?>?) ?? const <String, Object?>{};
@@ -98,19 +198,8 @@ class SdkHarvester {
     );
   }
 
-  String? _extractParentSha(Map<String, Object?> commitMap) {
-    final parents = commitMap['parents'];
-    if (parents is List && parents.isNotEmpty) {
-      final first = parents.first;
-      if (first is Map) return first['sha'] as String?;
-    }
-    return null;
-  }
-
-  String? _findChangelogPatch(Map<String, Object?> compareJson) {
-    final files = compareJson['files'];
-    if (files is! List) return null;
-    for (final file in files.whereType<Map<String, Object?>>()) {
+  String? _findChangelogPatchFromFiles(List<Map<String, Object?>> files) {
+    for (final file in files) {
       if (file['filename'] == 'CHANGELOG.md') {
         return file['patch'] as String?;
       }

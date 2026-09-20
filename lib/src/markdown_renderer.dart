@@ -1,3 +1,4 @@
+import 'changelog_parser.dart';
 import 'models.dart';
 
 String renderDigestMarkdown(WhatsNewDigest digest) {
@@ -10,6 +11,7 @@ String renderDigestMarkdown(WhatsNewDigest digest) {
         ..writeln('**Window**: `$sinceStr` to `$untilStr`')
         ..writeln();
 
+  _writeRepoGroupedSummary(buf, digest);
   _writePackageSection(
     buf,
     title: '## 🆕 New Packages on pub.dev (${digest.newPackages.length})',
@@ -87,24 +89,36 @@ void _writeSdkNextStableSection(
     buf
       ..writeln('### ${sec.heading}')
       ..writeln();
-    for (final bullet in sec.bullets) {
+    if (sec.touchingCommits.isNotEmpty) {
+      _writeSdkSectionCommits(buf, sec.touchingCommits);
+    } else {
+      for (final bullet in sec.bullets) {
+        buf.writeln('* $bullet');
+      }
+    }
+    buf.writeln();
+  }
+}
+
+void _writeSdkSectionCommits(StringBuffer buf, List<SdkCommitRef> commits) {
+  for (final c in commits) {
+    for (final bullet in c.addedBullets) {
       buf.writeln('* $bullet');
     }
-    buf.writeln();
+    buf.writeln('  * ↳ ${_formatSdkCommitWorkback(c)}');
   }
+}
 
-  final commits = sections.first.touchingCommits;
-  if (commits.isNotEmpty) {
-    buf
-      ..writeln('#### Commits Touching SDK `CHANGELOG.md`')
-      ..writeln();
-    for (final c in commits) {
-      buf.writeln(
-        '* [`${c.sha}`](${c.url}) ${c.title} (by `@${c.authorLogin}`)',
-      );
-    }
-    buf.writeln();
-  }
+String _formatSdkCommitWorkback(SdkCommitRef c) {
+  final scopeTag =
+      c.isChangelogCleanup
+          ? '🧹 `CHANGELOG.md`-only edit/cleanup'
+          : c.nonChangelogFileCount > 0
+          ? '🛠️ ${c.nonChangelogFileCount} code/test files '
+              '(${c.subsystems.map((s) => '`$s`').join(', ')})'
+          : '📝 standalone `CHANGELOG.md` entry';
+  return '[`${c.sha}`](${c.url}) ${c.title} '
+      '(by `@${c.authorLogin}` · $scopeTag)';
 }
 
 void _writeSdkDotReleasesSection(
@@ -189,6 +203,122 @@ void _writeFirstTimeContributorsSection(
     );
   }
   buf.writeln();
+}
+
+typedef _RepoRow =
+    ({String type, String target, String ref, String summary, String author});
+
+void _writeRepoGroupedSummary(StringBuffer buf, WhatsNewDigest digest) {
+  final byRepo = <String, List<_RepoRow>>{};
+  _addSdkRowsByRepo(byRepo, digest);
+  _addPackageRowsByRepo(byRepo, digest.newPackages, isNew: true);
+  _addPackageRowsByRepo(byRepo, digest.updatedPackages, isNew: false);
+  _addPrRowsByRepo(byRepo, digest.languagePrs, typeLabel: '📐 Language Spec');
+  _addPrRowsByRepo(
+    byRepo,
+    digest.notablePrs.where((p) => p.score >= 10),
+    typeLabel: '🚀 Merged PR',
+  );
+
+  if (byRepo.isEmpty) return;
+
+  buf
+    ..writeln('## 🗂️ Highlights by Repository')
+    ..writeln();
+  for (final entry in byRepo.entries) {
+    final repo = entry.key;
+    final repoHeader =
+        repo.contains('/') ? '[$repo](https://github.com/$repo)' : '`$repo`';
+    buf
+      ..writeln('### $repoHeader')
+      ..writeln()
+      ..writeln('| Type | Target | Version / Ref | Summary | Author |')
+      ..writeln('| :--- | :--- | :--- | :--- | :--- |');
+    for (final r in entry.value) {
+      buf.writeln(
+        '| ${r.type} | ${r.target} | ${r.ref} | ${r.summary} | ${r.author} |',
+      );
+    }
+    buf.writeln();
+  }
+}
+
+void _addSdkRowsByRepo(
+  Map<String, List<_RepoRow>> byRepo,
+  WhatsNewDigest digest,
+) {
+  final sdkRows = byRepo.putIfAbsent('dart-lang/sdk', () => []);
+  for (final dot in digest.sdkDotReleases) {
+    sdkRows.add((
+      type: '🛡️ SDK (`${dot.branchOrTag}`)',
+      target: dot.summary,
+      ref: '[commit](${dot.commitUrl})',
+      summary: dot.summary,
+      author: '`dart-lang/sdk`',
+    ));
+  }
+  for (final sec in digest.sdkNextStableSections) {
+    for (final c in sec.touchingCommits) {
+      if (c.isChangelogCleanup) continue;
+      sdkRows.add((
+        type: '🎯 SDK (`main`)',
+        target: sec.heading,
+        ref: '[`${c.sha}`](${c.url})',
+        summary: '${c.title} (`🛠️ ${c.nonChangelogFileCount} files`)',
+        author: '`@${c.authorLogin}`',
+      ));
+    }
+  }
+  if (sdkRows.isEmpty) byRepo.remove('dart-lang/sdk');
+}
+
+void _addPackageRowsByRepo(
+  Map<String, List<_RepoRow>> byRepo,
+  List<PackageRelease> packages, {
+  required bool isNew,
+}) {
+  final typeLabel = isNew ? '🆕 New Package' : '📦 Updated Package';
+  for (final p in packages) {
+    final repo = extractGitHubRepoSlug(p.repositoryUrl) ?? p.publisher;
+    final summary = _firstChangelogLine(p.changelogExcerpt) ?? p.description;
+    byRepo.putIfAbsent(repo, () => []).add((
+      type: typeLabel,
+      target: '[`package:${p.name}`](${p.pubUrl})',
+      ref: '`${p.version}`',
+      summary: summary.replaceAll('|', r'\|'),
+      author: '`${p.publisher}`',
+    ));
+  }
+}
+
+void _addPrRowsByRepo(
+  Map<String, List<_RepoRow>> byRepo,
+  Iterable<PullRequestItem> prs, {
+  required String typeLabel,
+}) {
+  for (final pr in prs) {
+    final author = pr.authorName ?? '@${pr.authorLogin}';
+    byRepo.putIfAbsent(pr.repo, () => []).add((
+      type: typeLabel,
+      target: '[${pr.repo}#${pr.number}](${pr.url})',
+      ref: 'score `${pr.score}`',
+      summary: pr.title.replaceAll('|', r'\|'),
+      author: '[$author](https://github.com/${pr.authorLogin})',
+    ));
+  }
+}
+
+String? _firstChangelogLine(String? excerpt) {
+  if (excerpt == null || excerpt.isEmpty) return null;
+  for (final raw in excerpt.split('\n')) {
+    final line = raw.trim();
+    if (line.isEmpty) continue;
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      return line.substring(2).trim();
+    }
+    return line;
+  }
+  return null;
 }
 
 String _shortDate(DateTime dt) => dt.toUtc().toIso8601String().substring(0, 10);

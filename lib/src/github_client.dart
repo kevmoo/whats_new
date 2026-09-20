@@ -54,6 +54,12 @@ class GitHubApiClient {
     return jsonDecode(response.body);
   }
 
+  Future<String?> getText(Uri uri) async {
+    final response = await _client.get(uri);
+    if (response.statusCode != 200) return null;
+    return response.body;
+  }
+
   Future<Map<String, Object?>?> postGraphQl(
     String query, [
     Map<String, Object?> variables = const {},

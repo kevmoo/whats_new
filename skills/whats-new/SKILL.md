@@ -90,6 +90,12 @@ formats using [references/templates.md](references/templates.md):
 
 ## Mandatory Writing & Data Integrity Guardrails
 
+- **Zero Publisher Domain Mentions (`dart.dev`, `tools.dart.dev`,
+  `labs.dart.dev`)**: Verified `pub.dev` publisher domains are strictly internal
+  harvest search filters in `config.yaml`. Never mention `pub.dev` publisher
+  domains in Notable Changes reports, social media copy, video scripts, or
+  recommended tables—end users only care about the package (`package:foo`) and
+  its source repository (`dart-lang/tools`).
 - **Zero Hallucinated Links or Contributors**: Every version number, PR URL,
   issue number, author handle, and reviewer handle MUST come verbatim from the
   deterministic `whats_new` CLI output.

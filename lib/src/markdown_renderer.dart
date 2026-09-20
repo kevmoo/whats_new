@@ -58,7 +58,7 @@ void _writePackageSection(
         pkg.repositoryUrl != null ? ' · [repo](${pkg.repositoryUrl})' : '';
     buf.writeln(
       '* **[`package:${pkg.name}` ${pkg.version}](${pkg.pubUrl})** '
-      '(`publisher:${pkg.publisher}` · ${_shortDate(pkg.published)}$repoBit)',
+      '(${_shortDate(pkg.published)}$repoBit)',
     );
     if (pkg.description.isNotEmpty) {
       buf.writeln('  ${pkg.description}');
@@ -211,8 +211,18 @@ typedef _RepoRow =
 void _writeRepoGroupedSummary(StringBuffer buf, WhatsNewDigest digest) {
   final byRepo = <String, List<_RepoRow>>{};
   _addSdkRowsByRepo(byRepo, digest);
-  _addPackageRowsByRepo(byRepo, digest.newPackages, isNew: true);
-  _addPackageRowsByRepo(byRepo, digest.updatedPackages, isNew: false);
+  _addPackageRowsByRepo(
+    byRepo,
+    digest.newPackages,
+    digest.notablePrs,
+    isNew: true,
+  );
+  _addPackageRowsByRepo(
+    byRepo,
+    digest.updatedPackages,
+    digest.notablePrs,
+    isNew: false,
+  );
   _addPrRowsByRepo(byRepo, digest.languagePrs, typeLabel: '📐 Language Spec');
   _addPrRowsByRepo(
     byRepo,
@@ -274,21 +284,39 @@ void _addSdkRowsByRepo(
 
 void _addPackageRowsByRepo(
   Map<String, List<_RepoRow>> byRepo,
-  List<PackageRelease> packages, {
+  List<PackageRelease> packages,
+  List<PullRequestItem> prs, {
   required bool isNew,
 }) {
   final typeLabel = isNew ? '🆕 New Package' : '📦 Updated Package';
   for (final p in packages) {
-    final repo = extractGitHubRepoSlug(p.repositoryUrl) ?? p.publisher;
+    final repo = extractGitHubRepoSlug(p.repositoryUrl) ?? 'pub.dev';
     final summary = _firstChangelogLine(p.changelogExcerpt) ?? p.description;
     byRepo.putIfAbsent(repo, () => []).add((
       type: typeLabel,
       target: '[`package:${p.name}`](${p.pubUrl})',
       ref: '`${p.version}`',
       summary: summary.replaceAll('|', r'\|'),
-      author: '`${p.publisher}`',
+      author: _findPackageReleaseAuthor(p, repo, prs),
     ));
   }
+}
+
+String _findPackageReleaseAuthor(
+  PackageRelease pkg,
+  String repo,
+  List<PullRequestItem> prs,
+) {
+  final lowerName = pkg.name.toLowerCase();
+  for (final pr in prs) {
+    if (pr.repo != repo) continue;
+    final lowerTitle = pr.title.toLowerCase();
+    if (lowerTitle.contains(lowerName) || lowerTitle.contains(pkg.version)) {
+      final display = pr.authorName ?? '@${pr.authorLogin}';
+      return '[$display](https://github.com/${pr.authorLogin})';
+    }
+  }
+  return '-';
 }
 
 void _addPrRowsByRepo(

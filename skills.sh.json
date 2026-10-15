@@ -1,0 +1,13 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Ecosystem Release Digests",
+      "description": "Skills for harvesting weekly pub.dev package releases, Dart SDK changelog diffs, and notable community pull requests.",
+      "skills": [
+        "whats-new"
+      ]
+    }
+  ]
+}

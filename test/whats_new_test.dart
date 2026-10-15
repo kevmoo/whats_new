@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -5,6 +6,34 @@ import 'package:whats_new/whats_new.dart';
 
 void main() {
   group('WhatsNewConfig', () {
+    test('skills.sh.json groups co-located skills', () {
+      final configFile = File('skills.sh.json');
+      expect(configFile.existsSync(), isTrue);
+
+      final decoded =
+          jsonDecode(configFile.readAsStringSync()) as Map<String, Object?>;
+      expect(
+        decoded[r'$schema'],
+        'https://skills.sh/schemas/skills.sh.schema.json',
+      );
+      expect(decoded['notGrouped'], 'bottom');
+
+      final groupings =
+          (decoded['groupings'] as List<Object?>).cast<Map<String, Object?>>();
+      final groupedSkills = {
+        for (final group in groupings)
+          ...(group['skills'] as List<Object?>).cast<String>(),
+      };
+      final actualSkills =
+          Directory('skills')
+              .listSync()
+              .whereType<Directory>()
+              .where((d) => File('${d.path}/SKILL.md').existsSync())
+              .map((d) => d.uri.pathSegments.where((s) => s.isNotEmpty).last)
+              .toSet();
+      expect(groupedSkills, equals(actualSkills));
+    });
+
     test('config.yaml matches embedded defaultConfigYaml and parses', () {
       final diskContent = File('config.yaml').readAsStringSync();
       expect(diskContent, defaultConfigYaml);

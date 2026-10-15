@@ -20,6 +20,18 @@ void main() {
 
       final groupings =
           (decoded['groupings'] as List<Object?>).cast<Map<String, Object?>>();
+      for (final group in groupings) {
+        expect(
+          group['title'],
+          isA<String>().having(
+            (s) =>
+                s.trim().isNotEmpty &&
+                s.trim().split(RegExp(r'\s+')).length <= 3,
+            '1-3 words',
+            isTrue,
+          ),
+        );
+      }
       final groupedSkills = {
         for (final group in groupings)
           ...(group['skills'] as List<Object?>).cast<String>(),
